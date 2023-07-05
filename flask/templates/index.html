@@ -1,0 +1,236 @@
+<html>
+<head>
+    <title>SF</title>
+    <!-- jquery  -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    
+    <!-- css file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <!-- canvas for sketch -->
+    <div id="sketch">
+        <canvas id="sf_canvas" width="320" height="320"></canvas>
+    </div>
+</body>
+
+<script>
+    // sketch input on canvas
+    var canvas = $("#sf_canvas");
+    var ctx = canvas.get(0).getContext("2d");
+    var sketch = $("#sketch");
+    var sketchWidth = sketch.width();
+    var sketchHeight = sketch.height();
+    var mouse = {x: 0, y: 0};
+    var lastMouse = {x: 0, y: 0};
+    var flag_draw = false;
+    var cur_curve = [];
+    var curves = [];
+    var joints = [];
+
+    // when page is loaded
+    $(document).ready(function() {
+
+        // start drawing by mouse push
+        canvas.mousedown(function(e) {
+            if (e.button == 0) {
+            lastMouse.x = mouse.x;
+            lastMouse.y = mouse.y;
+            mouse.x = e.pageX - this.offsetLeft;
+            mouse.y = e.pageY - this.offsetTop;
+            flag_draw = true;
+            cur_curve.push([mouse.x, mouse.y]);
+            }
+        });
+
+
+        // draw curve by mouse move
+        canvas.mousemove(function(e) {
+            if(flag_draw) {
+                lastMouse.x = mouse.x;
+                lastMouse.y = mouse.y;
+                mouse.x = e.pageX - this.offsetLeft;
+                mouse.y = e.pageY - this.offsetTop;
+                drawLine(lastMouse.x, lastMouse.y, mouse.x, mouse.y);
+                cur_curve.push([mouse.x, mouse.y]);
+            }
+        });
+
+        // stop drawing by mouse release
+        canvas.mouseup(function(e) {
+            if (e.button == 0) {
+                flag_draw = false;
+                curves.push(cur_curve);
+                cur_curve = [];
+            }
+            else if (e.button == 1) {
+                curves.pop();
+            }
+        });
+
+        // mouse out of canvas
+        canvas.mouseleave(function(e) {
+            flag_draw = false;
+            curves.push(cur_curve);
+            cur_curve = [];
+        });
+
+
+        // keyboard inputs  
+        $(document).keydown(function(e) {
+            //
+            if (e.keyCode == 67) { // 'c'
+                curves = [];
+                cur_curve = [];
+                joints = [];
+                clearCanvas();
+            }
+            else if (e.keyCode == 90) { // 'z'
+                joints = [];
+            }
+            else if ( e.keyCode == 80) { // 'p'
+                var img = captureCanvas();
+
+                // post png image
+                $.ajax({
+                    type: "POST",
+                    url: "/input_img",
+                    data: img,
+                    contentType: "image/png",
+                    dataType: "json",
+                    success: function(data) {
+                        console.log(data);
+                        joints = data["joints"];
+                    }
+                });
+
+                // win.document.write("<img src='" + img + "'/>");
+            }
+            // save curves
+            else if (e.keyCode == 83) { // 's'
+                var curves_json = JSON.stringify(curves);
+                $.ajax({
+                    type: "POST",
+                    url: "/save",
+                    data: curves_json,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function(data) {
+                        console.log(data);
+                    }
+                });
+            }
+            // load curves
+            else if (e.keyCode == 76) { // 'l'
+                $.ajax({
+                    type: "GET",
+                    url: "/load",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function(data) {
+                        curves = data;
+                    }
+                });
+            }
+        });
+
+        // set animation frame
+        window.requestAnimationFrame(draw);
+    });
+
+    // draw
+    function draw() {
+        clearCanvas();
+        drawCurves();
+        drawJoints();
+        window.requestAnimationFrame(draw);
+    }
+
+    // draw all curves
+    function drawCurves() {
+        for (var i = 0; i < curves.length; i++) {
+            var curve = curves[i];
+            for (var j = 0; j < curve.length - 1; j++) {
+                var x1 = curve[j][0];
+                var y1 = curve[j][1];
+                var x2 = curve[j+1][0];
+                var y2 = curve[j+1][1];
+                drawLine(x1, y1, x2, y2);
+            }
+        }
+
+        // cur_curve
+        for (var i = 0; i < cur_curve.length - 1; i++) {
+            var x1 = cur_curve[i][0];
+            var y1 = cur_curve[i][1];
+            var x2 = cur_curve[i+1][0];
+            var y2 = cur_curve[i+1][1];
+            drawLine(x1, y1, x2, y2);
+        }
+    }
+
+    // draw line
+    function drawLine(x1, y1, x2, y2, w=5, c="black") {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2,y2);
+        ctx.strokeStyle = c;
+        ctx.lineWidth = w;
+        ctx.stroke();
+        ctx.closePath();
+    }
+
+    // draw joints
+    function drawJoints() {
+        for (var i = 0; i < joints.length; i++) {
+            var joint = joints[i];
+            var x = joint[0];
+            var y = joint[1];
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, 2*Math.PI);
+            ctx.fillStyle = "red";
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        if (joints.length == 11) {
+            drawBody();
+        }
+    }
+
+    // draw body
+    function drawBody() {
+
+        drawLine(joints[0][0], joints[0][1], joints[1][0], joints[1][1], 2, "green");
+        drawLine(joints[1][0], joints[1][1], joints[2][0], joints[2][1], 2, "green");
+
+        drawLine(joints[1][0], joints[1][1], joints[3][0], joints[3][1], 2, "red");
+        drawLine(joints[3][0], joints[3][1], joints[4][0], joints[4][1], 2, "red");
+
+        drawLine(joints[1][0], joints[1][1], joints[5][0], joints[5][1], 2, "blue");
+        drawLine(joints[5][0], joints[5][1], joints[6][0], joints[6][1], 2, "blue");
+
+        drawLine(joints[0][0], joints[0][1], joints[7][0], joints[7][1], 2, "red");
+        drawLine(joints[7][0], joints[7][1], joints[8][0], joints[8][1], 2, "red");
+
+        drawLine(joints[0][0], joints[0][1], joints[9][0], joints[9][1], 2, "blue");
+        drawLine(joints[9][0], joints[9][1], joints[10][0], joints[10][1], 2, "blue");
+    }
+
+    // clear canvas
+    function clearCanvas() {
+        // fill canvas with white
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, sketchWidth, sketchHeight);
+        // ctx.clearRect(0, 0, sketchWidth, sketchHeight);
+    }
+
+    // capture canvas
+    function captureCanvas() {
+        var img = canvas.get(0).toDataURL("image/png");
+        return img;
+    }
+
+
+</script>

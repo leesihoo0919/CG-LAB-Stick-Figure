@@ -11,4 +11,5 @@ drawing
 image_train_f
 논문 이미지
 final image
-
+image_train_f.zip
+flask/**/*.png
