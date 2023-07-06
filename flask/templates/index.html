@@ -9,9 +9,20 @@
 </head>
 
 <body>
+    <div class="container">
     <!-- canvas for sketch -->
     <div id="sketch">
-        <canvas id="sf_canvas" width="320" height="320"></canvas>
+        <canvas id="sf_canvas" width="320" height="320"> </canvas>
+        <!-- canvas for output overlay --> 
+        <canvas id="sf_canvas_overlay" width="320" height="320"></canvas>
+    </div>
+
+    <div id="btns_div">
+        <button id="btn_clear">Clear</button>
+        <button id="btn_undo_stroke">Undo Stroke</button>
+        <button id="btn_predict">Predict</button>
+        <button id="btn_opt">Opt</button>
+    </div>
     </div>
 </body>
 
@@ -19,6 +30,7 @@
     // sketch input on canvas
     var canvas = $("#sf_canvas");
     var ctx = canvas.get(0).getContext("2d");
+    var ctx_overlay = $("#sf_canvas_overlay").get(0).getContext("2d");
     var sketch = $("#sketch");
     var sketchWidth = sketch.width();
     var sketchHeight = sketch.height();
@@ -35,12 +47,15 @@
         // start drawing by mouse push
         canvas.mousedown(function(e) {
             if (e.button == 0) {
-            lastMouse.x = mouse.x;
-            lastMouse.y = mouse.y;
-            mouse.x = e.pageX - this.offsetLeft;
-            mouse.y = e.pageY - this.offsetTop;
-            flag_draw = true;
-            cur_curve.push([mouse.x, mouse.y]);
+                lastMouse.x = mouse.x;
+                lastMouse.y = mouse.y;
+                mouse.x = e.pageX - this.offsetLeft;
+                mouse.y = e.pageY - this.offsetTop;
+                flag_draw = true;
+                cur_curve.push([mouse.x, mouse.y]);
+            }
+            else if (e.button == 1) {
+                curves.pop();
             }
         });
 
@@ -61,18 +76,17 @@
         canvas.mouseup(function(e) {
             if (e.button == 0) {
                 flag_draw = false;
-                curves.push(cur_curve);
+                if (cur_curve.length > 0)
+                    curves.push(cur_curve);
                 cur_curve = [];
-            }
-            else if (e.button == 1) {
-                curves.pop();
             }
         });
 
         // mouse out of canvas
         canvas.mouseleave(function(e) {
             flag_draw = false;
-            curves.push(cur_curve);
+            if (cur_curve.length > 0)
+                curves.push(cur_curve);
             cur_curve = [];
         });
 
@@ -81,66 +95,95 @@
         $(document).keydown(function(e) {
             //
             if (e.keyCode == 67) { // 'c'
-                curves = [];
-                cur_curve = [];
-                joints = [];
-                clearCanvas();
+                clear_all();
             }
             else if (e.keyCode == 90) { // 'z'
                 joints = [];
             }
             else if ( e.keyCode == 80) { // 'p'
-                var img = captureCanvas();
-
-                // post png image
-                $.ajax({
-                    type: "POST",
-                    url: "/input_img",
-                    data: img,
-                    contentType: "image/png",
-                    dataType: "json",
-                    success: function(data) {
-                        console.log(data);
-                        joints = data["joints"];
-                    }
-                });
-
-                // win.document.write("<img src='" + img + "'/>");
+                predict_joints();
             }
-            // save curves
-            else if (e.keyCode == 83) { // 's'
-                var curves_json = JSON.stringify(curves);
-                $.ajax({
-                    type: "POST",
-                    url: "/save",
-                    data: curves_json,
-                    contentType: "application/json; charset=utf-8",
-                    dataType: "json",
-                    success: function(data) {
-                        console.log(data);
-                    }
-                });
-            }
-            // load curves
-            else if (e.keyCode == 76) { // 'l'
-                $.ajax({
-                    type: "GET",
-                    url: "/load",
-                    contentType: "application/json; charset=utf-8",
-                    dataType: "json",
-                    success: function(data) {
-                        curves = data;
-                    }
-                });
+            else if ( e.keyCode == 79) { // 'o'
+                opt_joints();
             }
         });
+
+        // buttons
+        $("#btn_clear").click(function() {
+            clear_all();
+        });
+
+        $("#btn_undo_stroke").click(function() {
+            undo_stroke();
+        });
+
+        $("#btn_predict").click(function() {
+            predict_joints();
+        });
+
+        $("#btn_opt").click(function() {
+            opt_joints();
+        });
+
 
         // set animation frame
         window.requestAnimationFrame(draw);
     });
 
+    /*******  Task Functions  *******/
+    function clear_all() {
+        curves = [];
+        cur_curve = [];
+        joints = [];
+        clearCanvas();
+    }    
+
+    function undo_stroke() {
+        console.log(curves.length);
+        curves.pop();
+        console.log(curves.length);
+    }
+
+    function predict_joints() {
+        var img = captureCanvas();
+        $.ajax({
+            type: "POST",
+            url: "/input_img",
+            data: img,
+            contentType: "image/png",
+            dataType: "json",
+            success: function(data) {
+                console.log(data);
+                joints = data["joints"];
+            }
+        });
+    }
+
+    function opt_joints() {
+        $.ajax({
+            type: "POST",
+            url: "/opt_joints",
+            data: JSON.stringify({opt_times: 5}),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function(data) {
+                console.log(data);
+                joints = data["joints"];
+            }
+        });
+    }
+
+    /*******  Drawing Functions  *******/
     // draw
     function draw() {
+        // resize sf_canvas_overlay
+        var canvas_overlay = $("#sf_canvas_overlay");
+        canvas_overlay.width(sketchWidth);
+        canvas_overlay.height(sketchHeight);
+        // move sf_canvas_overlay
+        canvas_overlay.css("top", sketch.offset().top);
+        canvas_overlay.css("left", sketch.offset().left);
+
         clearCanvas();
         drawCurves();
         drawJoints();
@@ -156,7 +199,8 @@
                 var y1 = curve[j][1];
                 var x2 = curve[j+1][0];
                 var y2 = curve[j+1][1];
-                drawLine(x1, y1, x2, y2);
+                // drawLine(x1, y1, x2, y2);
+             drawLine(...curve[j], ...curve[j+1]);
             }
         }
 
@@ -166,7 +210,8 @@
             var y1 = cur_curve[i][1];
             var x2 = cur_curve[i+1][0];
             var y2 = cur_curve[i+1][1];
-            drawLine(x1, y1, x2, y2);
+            // drawLine(x1, y1, x2, y2);
+             drawLine(...cur_curve[i], ...cur_curve[i+1]);
         }
     }
 
@@ -187,11 +232,11 @@
             var joint = joints[i];
             var x = joint[0];
             var y = joint[1];
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, 2*Math.PI);
-            ctx.fillStyle = "red";
-            ctx.fill();
-            ctx.closePath();
+            ctx_overlay.beginPath();
+            ctx_overlay.arc(...joint, 5, 0, 2*Math.PI);
+            ctx_overlay.fillStyle = "red";
+            ctx_overlay.fill();
+            ctx_overlay.closePath();
         }
 
         if (joints.length == 11) {
@@ -201,21 +246,31 @@
 
     // draw body
     function drawBody() {
+        var links = [
+            [0,1], [1,2],
+            [1,3], [3,4],
+            [1,5], [5,6],
+            [0,7], [7,8],
+            [0,9], [9,10]
+        ]
 
-        drawLine(joints[0][0], joints[0][1], joints[1][0], joints[1][1], 2, "green");
-        drawLine(joints[1][0], joints[1][1], joints[2][0], joints[2][1], 2, "green");
+        for ( var i = 0; i < links.length; i++) {
+            var link = links[i];
+            var j1 = link[0];
+            var j2 = link[1];
+            var x1 = joints[j1][0];
+            var y1 = joints[j1][1];
+            var x2 = joints[j2][0];
+            var y2 = joints[j2][1];
+            ctx_overlay.beginPath();
+            ctx_overlay.moveTo(...joints[j1]); //x1, y1);
+            ctx_overlay.lineTo(...joints[j2]);//x2,y2);
+            ctx_overlay.strokeStyle = "blue";
+            ctx_overlay.lineWidth = 2;
+            ctx_overlay.stroke();
+            ctx_overlay.closePath();
 
-        drawLine(joints[1][0], joints[1][1], joints[3][0], joints[3][1], 2, "red");
-        drawLine(joints[3][0], joints[3][1], joints[4][0], joints[4][1], 2, "red");
-
-        drawLine(joints[1][0], joints[1][1], joints[5][0], joints[5][1], 2, "blue");
-        drawLine(joints[5][0], joints[5][1], joints[6][0], joints[6][1], 2, "blue");
-
-        drawLine(joints[0][0], joints[0][1], joints[7][0], joints[7][1], 2, "red");
-        drawLine(joints[7][0], joints[7][1], joints[8][0], joints[8][1], 2, "red");
-
-        drawLine(joints[0][0], joints[0][1], joints[9][0], joints[9][1], 2, "blue");
-        drawLine(joints[9][0], joints[9][1], joints[10][0], joints[10][1], 2, "blue");
+        }
     }
 
     // clear canvas
@@ -224,6 +279,7 @@
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, sketchWidth, sketchHeight);
         // ctx.clearRect(0, 0, sketchWidth, sketchHeight);
+        ctx_overlay.clearRect(0, 0, sketchWidth, sketchHeight);
     }
 
     // capture canvas

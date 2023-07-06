@@ -58,30 +58,33 @@ def preprocess_img(img):
 
     return res
 
+g_img = []
+g_joints = []
+
 @app.route('/input_img', methods=['POST'])
 def request_sf():
+    global g_img, g_joints
+
     b64 = request.get_data(as_text=True)
-    img = data_uri_to_cv2_img(b64)
-    cv2.imwrite('input_imgs/sf_input.png', img)
+    g_img = data_uri_to_cv2_img(b64)
+    cv2.imwrite('input_imgs/sf_input.png', g_img)
 
-
-    joints = get_joints(img)
-
-    joints = opt_joints(joints, img)
+    g_joints = predict_joints(g_img).reshape(-1,2)
 
     res = {
-        "joints": joints.reshape(-1,2).tolist()
+        "joints": g_joints.tolist()
     }
 
     return res
 
-def get_joints(img):
+def predict_joints(img):
     w = img.shape[1]
     print(img.shape)
     p_img = preprocess_img(img).reshape(1, 1, 32, 32)
     cv2.imwrite('p_sf_input.png', p_img[0][0]*255) 
     joints = sf_model(torch.tensor(p_img)).detach().numpy()[0]
     return np.round(joints*w)
+
 
 def move_to_local_min(df_img, x, y):
     min_x = x
@@ -124,29 +127,39 @@ def move_to_local_max(df_img, x, y):
 
 
 
-def opt_joints(joints, img):
+@app.route('/opt_joints', methods=['POST'])
+def opt_joints():
+    global g_joints, g_img
+
+    if len(g_joints) != 11:
+        return {"joints": []}
+
+    img = cv2.imread('input_imgs/sf_input.png')
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, binary_image = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
-    binary_image = binary_image.astype(np.uint8)  # 이미지 형식 변환
+    binary_image = binary_image.astype(np.uint8)  
     d_img = cv2.distanceTransform(binary_image, cv2.DIST_L2, 5)
     cv2.imwrite('d_img.png', d_img)
 
-    for k in range(100):
+    print(request.get_data())
+    k = request.get_json()["opt_times"]
+
+    for _k in range(k):
         for i in range(11):
-            x = int(joints[i * 2])
-            y = int(joints[i * 2 + 1])
+            x = int(g_joints[i][0])
+            y = int(g_joints[i][1])
 
             if i == 2 :
                 x, y = move_to_local_max(d_img, x, y)
             else:
                 x, y = move_to_local_min(d_img, x, y)
 
-            joints[i * 2] = x
-            joints[i * 2 + 1] = y
-    return joints
+            g_joints[i][0] = x
+            g_joints[i][1] = y
+    return {"joints": g_joints.tolist()}
 
 if __name__ == '__main__':
     sf_model.load_state_dict(torch.load('../model_save/trained_model.pt'))
     sf_model.eval()
-    print(get_joints(cv2.imread('input_imgs/sf_input.png')))
+    print(predict_joints(cv2.imread('input_imgs/sf_input.png')))
     app.run(debug=True, port=8888)

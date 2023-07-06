@@ -1,7 +1,55 @@
-
-canvas {
+#sketch {
     border: 1px solid black;
     background-color: white;
     margin: 0 auto;
     display: block;
+    width: 320px;
+    height: 320px;
+    /* no padding, no border */
+    padding: 0;
+    border: none;
+    /* position: relative; */
+}
+
+#sf_canvas {
+    border: 1px solid black;
+    background-color: white;
+    margin: 0 auto;
+    display: block;
+}
+
+#sf_canvas_overlay {
+    /* position at the top left corner of the parent */
+    position: absolute;
+    top: 0;
+    left: 0;
+
+    z-index: 100;
+
+    /* make it the same size as sf_canvas */
+    /* width: 100%;
+    height: 100%; */
+
+    /* make it transparent */
+    background-color: transparent;
+
+    /* make it non-clickable */
+    pointer-events: none;
+
+    margin: 0 auto;
+
+}
+
+#btns_div {
+    margin: 10 auto;
+    /* width: 320px; */
+    padding: 0;
+    border: none;
+    /* content align center */
+    text-align: center;
+}
+
+#btns_div > button {
+    margin: 5 auto;
+    width: 100px;
 }
