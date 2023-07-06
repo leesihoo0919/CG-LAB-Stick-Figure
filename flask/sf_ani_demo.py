@@ -83,7 +83,9 @@ def predict_joints(img):
     p_img = preprocess_img(img).reshape(1, 1, 32, 32)
     cv2.imwrite('p_sf_input.png', p_img[0][0]*255) 
     joints = sf_model(torch.tensor(p_img)).detach().numpy()[0]
-    return np.round(joints*w)
+    joints = np.round(joints*w)
+    joints = np.clip(joints, 0, w-1)
+    return joints
 
 
 def move_to_local_min(df_img, x, y):
@@ -159,7 +161,7 @@ def opt_joints():
     return {"joints": g_joints.tolist()}
 
 if __name__ == '__main__':
-    sf_model.load_state_dict(torch.load('../model_save/trained_model.pt'))
+    sf_model.load_state_dict(torch.load('model/trained_model.pt'))
     sf_model.eval()
     print(predict_joints(cv2.imread('input_imgs/sf_input.png')))
     app.run(debug=True, port=8888)
